@@ -63,7 +63,9 @@ jobs:
       - uses: actions/checkout@v4
       - name: Syntax check shell scripts
         run: |
-          set -e
-          for f in scripts/*.sh deploy/*.sh; do
-            [ -f "$f" ] && bash -n "$f" && echo "OK $f"
+          set -euo pipefail
+          mapfile -t files < <(find scripts deploy tests -type f -name '*.sh' -print | sort)
+          for f in "${files[@]}"; do
+            bash -n "$f"
+            echo "OK $f"
           done
