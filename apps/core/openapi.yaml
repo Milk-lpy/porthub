@@ -1,0 +1,478 @@
+openapi: 3.1.0
+info:
+  title: PortHub Core API
+  version: 1.0.0
+  description: PortHub control-plane API. Browser clients authenticate with the secure session cookie and CSRF header; Agents use mTLS.
+servers:
+  - url: /
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: ph_session
+    csrfToken:
+      type: apiKey
+      in: header
+      name: X-CSRF-Token
+    bearerToken:
+      type: http
+      scheme: bearer
+    agentMTLS:
+      type: mutualTLS
+  schemas:
+    Error:
+      type: object
+      properties:
+        error: { type: string }
+    Mapping:
+      type: object
+      required: [name, target_ip, public_start, public_end, target_start, target_end, protocol]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        description: { type: string }
+        public_ip: { type: string, format: ipv4 }
+        public_start: { type: integer, minimum: 1, maximum: 65535 }
+        public_end: { type: integer, minimum: 1, maximum: 65535 }
+        target_ip: { type: string, format: ipv4 }
+        target_start: { type: integer, minimum: 1, maximum: 65535 }
+        target_end: { type: integer, minimum: 1, maximum: 65535 }
+        protocol: { type: string, enum: [tcp, udp, tcpudp, both] }
+        enabled: { type: boolean }
+        rate_limit_kbps: { type: integer, minimum: 0 }
+        connection_limit: { type: integer, minimum: 0 }
+    Health:
+      type: object
+      properties:
+        status: { type: string }
+        component: { type: string }
+    WireGuardPeer:
+      type: object
+      required: [name, public_key]
+      properties:
+        id: { type: integer }
+        node_id: { type: string }
+        name: { type: string }
+        public_key: { type: string, description: Base64-encoded 32-byte public key }
+        address: { type: string, description: Host CIDR; automatically allocated when omitted }
+        allowed_ips:
+          type: array
+          items: { type: string }
+        persistent_keepalive: { type: integer, minimum: 0, maximum: 65535, default: 25 }
+        enabled: { type: boolean, default: true }
+    PublicSourceAudit:
+      type: object
+      properties:
+        id: { type: integer }
+        observed_minute: { type: string, format: date-time }
+        first_seen_at: { type: string, format: date-time }
+        last_seen_at: { type: string, format: date-time }
+        edge_version: { type: string }
+        source_ip: { type: string, description: Exact for operator/admin roles; masked for readonly roles }
+        source_ip_masked: { type: string }
+        mapping_id: { type: string }
+        mapping: { type: string }
+        protocol: { type: string, enum: [tcp, udp] }
+        public_port: { type: integer, minimum: 1, maximum: 65535 }
+        target: { type: string }
+        state: { type: string }
+        bytes: { type: integer, minimum: 0 }
+        observations: { type: integer, minimum: 0 }
+        timeout_seconds: { type: integer, minimum: 0 }
+    PublicSourceAuditResponse:
+      type: object
+      properties:
+        records:
+          type: array
+          items: { $ref: "#/components/schemas/PublicSourceAudit" }
+        summary:
+          type: array
+          items:
+            type: object
+            properties:
+              source_ip: { type: string }
+              source_ip_masked: { type: string }
+              mappings: { type: integer }
+              bytes: { type: integer }
+              observations: { type: integer }
+              last_seen_at: { type: string, format: date-time }
+        total: { type: integer }
+        retention_days: { type: integer }
+        exact_source_ip: { type: boolean }
+paths:
+  /api/health:
+    get:
+      summary: Core liveness
+      security: []
+      responses:
+        "200": { description: Core process is running }
+  /api/ready:
+    get:
+      summary: Core readiness
+      security: []
+      responses:
+        "200": { description: "Database, netd, and WireGuard are ready" }
+        "503": { description: One or more dependencies are unavailable }
+  /api/login:
+    post:
+      summary: Authenticate with password and optional TOTP
+      security: []
+      responses:
+        "200": { description: Authenticated }
+        "401": { description: Invalid credentials }
+        "429": { description: Login temporarily rate limited }
+  /api/session:
+    get:
+      summary: Current session and CSRF state
+      security: [{ sessionCookie: [] }, { bearerToken: [] }]
+      responses:
+        "200": { description: Active session }
+        "401": { description: Not authenticated }
+  /api/traffic/public-sources:
+    get:
+      summary: Read persisted public source IP audit records
+      description: Core stores minute-bucketed Edge conntrack observations. Private, loopback, link-local and carrier-grade NAT sources are excluded. Readonly roles receive masked source IPs.
+      security: [{ sessionCookie: [] }, { bearerToken: [] }]
+      parameters:
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 1000, default: 100 } }
+        - { name: source_ip, in: query, schema: { type: string } }
+        - { name: mapping_id, in: query, schema: { type: string, maxLength: 128 } }
+        - { name: protocol, in: query, schema: { type: string, enum: [tcp, udp] } }
+        - { name: from, in: query, schema: { type: string, format: date-time } }
+        - { name: to, in: query, schema: { type: string, format: date-time } }
+      responses:
+        "200":
+          description: Public source audit records and source ranking
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PublicSourceAuditResponse" }
+        "400": { description: Invalid filter }
+        "401": { description: Not authenticated }
+  /api/mappings:
+    get:
+      summary: List mappings
+      security: [{ sessionCookie: [] }, { bearerToken: [] }]
+      responses:
+        "200": { description: Mapping list }
+    post:
+      summary: Create a mapping
+      security: [{ sessionCookie: [], csrfToken: [] }, { bearerToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Mapping" }
+      responses:
+        "201": { description: Created }
+        "400": { description: Validation or port conflict }
+    put:
+      summary: Update a mapping
+      security: [{ sessionCookie: [], csrfToken: [] }, { bearerToken: [] }]
+      responses:
+        "200": { description: Updated }
+    delete:
+      summary: Delete a mapping by id query parameter
+      security: [{ sessionCookie: [], csrfToken: [] }, { bearerToken: [] }]
+      responses:
+        "200": { description: Deleted }
+  /api/mappings/conflicts:
+    get:
+      summary: Detect mapping and Edge listener conflicts
+      security: [{ sessionCookie: [] }, { bearerToken: [] }]
+      responses:
+        "200": { description: Conflict report }
+  /api/deploy:
+    post:
+      summary: Compile, sign, and deploy the current snapshot
+      security: [{ sessionCookie: [], csrfToken: [] }, { bearerToken: [] }]
+      responses:
+        "200": { description: Applied }
+        "400": { description: Preflight failed }
+  /api/snapshots:
+    get:
+      summary: List immutable snapshot history
+      security: [{ sessionCookie: [] }, { bearerToken: [] }]
+      responses:
+        "200": { description: Snapshot history }
+  /api/snapshots/rollback:
+    post:
+      summary: Restore a historical snapshot as a newly signed version
+      security: [{ sessionCookie: [], csrfToken: [] }, { bearerToken: [] }]
+      responses:
+        "200": { description: Rolled back }
+  /api/nodes/status:
+    get:
+      summary: List Edge, Core, and Agent status
+      security: [{ sessionCookie: [] }, { bearerToken: [] }]
+      responses:
+        "200": { description: Node state }
+  /api/lan-scan:
+    get:
+      summary: Read the latest LAN service scan
+      security: [{ sessionCookie: [] }, { bearerToken: [] }]
+      responses:
+        "200": { description: Scan status, discovered hosts and classified TCP services }
+    post:
+      summary: Start a scan inside the configured LAN CIDRs
+      security: [{ sessionCookie: [], csrfToken: [] }, { bearerToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                mode: { type: string, enum: [common, deep], default: common }
+                host: { type: string, description: Legacy optional single-host field; deep mode now scans all configured LAN CIDRs }
+      responses:
+        "202": { description: Scan accepted; poll GET for progress }
+        "400": { description: Host, mode or scan budget invalid }
+    delete:
+      summary: Stop the current LAN scan and preserve discovered results
+      security: [{ sessionCookie: [], csrfToken: [] }, { bearerToken: [] }]
+      responses:
+        "200": { description: Stop requested; poll GET for the final preserved result }
+        "409": { description: No scan is currently running }
+        "409": { description: Another scan is already running }
+  /api/agents/enrollments:
+    post:
+      summary: Create a one-time Agent enrollment token
+      security: [{ sessionCookie: [], csrfToken: [] }, { bearerToken: [] }]
+      responses:
+        "200": { description: Enrollment token returned once }
+  /api/agents/register:
+    post:
+      summary: Exchange enrollment token and CSR for an Agent certificate
+      security: []
+      responses:
+        "200": { description: Signed client certificate }
+  /api/agents/heartbeat:
+    post:
+      summary: Submit Agent heartbeat using mTLS
+      security: [{ agentMTLS: [] }]
+      responses:
+        "200": { description: Heartbeat accepted }
+        "401": { description: Client certificate missing or mismatched }
+  /api/http-proxies:
+    get:
+      summary: List HTTP and HTTPS proxy definitions
+      security: [{ sessionCookie: [] }, { bearerToken: [] }]
+      responses:
+        "200": { description: Proxy definitions }
+  /api/ddns/records:
+    get:
+      summary: List DDNS records
+      security: [{ sessionCookie: [] }, { bearerToken: [] }]
+      responses:
+        "200": { description: DDNS records }
+  /api/certificates:
+    get:
+      summary: List certificate metadata
+      security: [{ sessionCookie: [] }, { bearerToken: [] }]
+      responses:
+        "200": { description: Certificates without private key material }
+  /api/wireguard/peers:
+    get:
+      summary: List PortHub-managed WireGuard peers
+      security: [{ sessionCookie: [] }, { bearerToken: [] }]
+      responses:
+        "200": { description: Managed peers without private key material }
+    post:
+      summary: Create a managed WireGuard peer draft
+      security: [{ sessionCookie: [], csrfToken: [] }, { bearerToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/WireGuardPeer" }
+      responses:
+        "200": { description: Peer draft created }
+        "409": { description: Public key or address already exists }
+    put:
+      summary: Update a managed WireGuard peer draft
+      security: [{ sessionCookie: [], csrfToken: [] }, { bearerToken: [] }]
+      responses:
+        "200": { description: Peer draft updated }
+    delete:
+      summary: Remove a peer draft by id query parameter
+      security: [{ sessionCookie: [], csrfToken: [] }, { bearerToken: [] }]
+      responses:
+        "200": { description: Peer draft removed }
+  /api/wireguard/peers/deploy:
+    post:
+      summary: Sign and deploy the complete managed peer set to Edge
+      security: [{ sessionCookie: [], csrfToken: [] }, { bearerToken: [] }]
+      responses:
+        "200": { description: Peer set applied }
+        "502": { description: Edge rejected or could not apply the peer set }
+  /api/wireguard/status:
+    get:
+      summary: Read safe Edge WireGuard runtime counters
+      security: [{ sessionCookie: [] }, { bearerToken: [] }]
+      responses:
+        "200": { description: Interface and managed-peer status without private material }
+  /api/alerts:
+    get:
+      summary: List active and recently resolved system alerts
+      security: [{ sessionCookie: [] }, { bearerToken: [] }]
+      responses:
+        "200": { description: Alert history }
+    post:
+      summary: Acknowledge an alert
+      security: [{ sessionCookie: [], csrfToken: [] }, { bearerToken: [] }]
+      responses:
+        "200": { description: Alert acknowledged }
+  /api/monitor/stream:
+    get:
+      summary: Upgrade to the authenticated same-origin realtime monitoring WebSocket
+      security: [{ sessionCookie: [] }, { bearerToken: [] }]
+      responses:
+        "101": { description: WebSocket stream established }
+        "403": { description: Cross-origin request rejected }
+  /api/backups:
+    get:
+      summary: List Core backups
+      security: [{ sessionCookie: [] }, { bearerToken: [] }]
+      responses:
+        "200": { description: Backups }
+    post:
+      summary: Create a Core backup
+      security: [{ sessionCookie: [], csrfToken: [] }, { bearerToken: [] }]
+      responses:
+        "200": { description: Backup created }
+  /api/tokens:
+    post:
+      summary: Create an API token
+      security: [{ sessionCookie: [], csrfToken: [] }]
+      responses:
+        "200": { description: Token returned once }
+  /api/users:
+    get:
+      summary: List users; super administrator only
+      security: [{ sessionCookie: [] }, { bearerToken: [] }]
+      responses:
+        "200": { description: Users }
+        "403": { description: Insufficient role }
+  /api/ai/draft:
+    post:
+      summary: Generate disabled mapping drafts with the local deterministic intent parser
+      security: [{ sessionCookie: [], csrfToken: [] }, { bearerToken: [] }]
+      responses:
+        "200": { description: "Drafts, warnings, blockers, and confirmation requirement" }
+        "400": { description: Intent could not be parsed safely }
+  /api/ip-feeds:
+    get:
+      summary: List trusted GeoIP and ASN CIDR feeds
+      security: [{ sessionCookie: [] }, { bearerToken: [] }]
+      responses:
+        "200": { description: Feed inventory without secret material }
+    post:
+      summary: Create a bounded public HTTPS CIDR feed
+      security: [{ sessionCookie: [], csrfToken: [] }, { bearerToken: [] }]
+      responses:
+        "201": { description: Feed created }
+    put:
+      summary: Update a CIDR feed
+      security: [{ sessionCookie: [], csrfToken: [] }, { bearerToken: [] }]
+      responses:
+        "200": { description: Feed updated }
+    delete:
+      summary: Delete a CIDR feed by id query parameter
+      security: [{ sessionCookie: [], csrfToken: [] }, { bearerToken: [] }]
+      responses:
+        "200": { description: Feed deleted }
+  /api/ip-feeds/sync:
+    post:
+      summary: Dry-run or synchronize one feed into its managed IP set
+      security: [{ sessionCookie: [], csrfToken: [] }, { bearerToken: [] }]
+      responses:
+        "200": { description: Normalized feed result }
+        "502": { description: "Fetch, pin, or parse failed closed" }
+  /api/certificates/acme/status:
+    get:
+      summary: Read safe ACME account readiness and directory state
+      security: [{ sessionCookie: [] }, { bearerToken: [] }]
+      responses:
+        "200": { description: "Email, directory URL, and readiness; no private keys" }
+  /api/certificates/acme/issue:
+    post:
+      summary: Issue and optionally deploy a real ACME HTTP-01 or DNS-01 certificate
+      security: [{ sessionCookie: [], csrfToken: [] }, { bearerToken: [] }]
+      responses:
+        "200": { description: "Certificate chain validated, stored, and optionally deployed" }
+        "502": { description: "Public preflight, CA authorization, or Edge deployment failed" }
+  /api/certificates/import:
+    post:
+      summary: Validate and store a certificate chain and matching private key
+      security: [{ sessionCookie: [], csrfToken: [] }, { bearerToken: [] }]
+      responses:
+        "200": { description: Certificate imported and optionally deployed }
+        "400": { description: "Chain, domain, validity, or key validation failed" }
+  /api/certificates/deploy:
+    post:
+      summary: Retry hot-deploying an issued certificate to Edge
+      security: [{ sessionCookie: [], csrfToken: [] }, { bearerToken: [] }]
+      responses:
+        "200": { description: Certificate bundle applied by Edge }
+  /api/updates/status:
+    get:
+      summary: Read trusted update-source and staged-version state
+      security: [{ sessionCookie: [] }, { bearerToken: [] }]
+      responses:
+        "200": { description: Update state }
+  /api/updates/check:
+    post:
+      summary: Fetch and verify the signed update manifest
+      security: [{ sessionCookie: [], csrfToken: [] }, { bearerToken: [] }]
+      responses:
+        "200": { description: Verified release metadata }
+        "502": { description: Source or signature validation failed }
+  /api/updates/stage:
+    post:
+      summary: Verify and atomically stage a Core or Agent artifact
+      security: [{ sessionCookie: [], csrfToken: [] }, { bearerToken: [] }]
+      responses:
+        "200": { description: Artifact staged without service restart }
+  /api/managed-services:
+    get:
+      summary: Read allowlisted DST and QX service states, listeners and safe wg-dst metrics
+      security: [{ sessionCookie: [] }, { bearerToken: [] }]
+      responses:
+        "200": { description: Managed service list and redacted wg-dst state; available to authenticated users }
+        "502": { description: Restricted netd helper unavailable }
+    post:
+      summary: Control one allowlisted DST or QX service
+      security: [{ sessionCookie: [], csrfToken: [] }, { bearerToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [service, action]
+              additionalProperties: false
+              properties:
+                service: { type: string, enum: [qx-lan-socks, qx-lan-config-http, dst-wireguard, dst-wireguard-health, dst-wireguard-register, prefer-real-ipv6-gateway] }
+                action: { type: string, enum: [start, stop, restart, enable, disable] }
+      responses:
+        "200": { description: Action completed and refreshed states returned }
+        "400": { description: Unsupported action or malformed request }
+        "403": { description: Administrator role required or service not allowlisted }
+        "502": { description: Restricted systemd operation failed }
+  /api/qx/services:
+    get:
+      summary: Compatibility alias for GET /api/managed-services
+      deprecated: true
+      security: [{ sessionCookie: [] }, { bearerToken: [] }]
+      responses:
+        "200": { description: Same response as /api/managed-services }
+        "502": { description: Restricted netd helper unavailable }
+    post:
+      summary: Compatibility alias for POST /api/managed-services
+      deprecated: true
+      security: [{ sessionCookie: [], csrfToken: [] }, { bearerToken: [] }]
+      responses:
+        "200": { description: Same response as /api/managed-services }
+        "403": { description: Administrator role required or service not allowlisted }

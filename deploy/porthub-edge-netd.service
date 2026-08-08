@@ -1,0 +1,39 @@
+[Unit]
+Description=PortHub Edge restricted network helper
+After=network-online.target wg-quick@wg-porthub.service
+Wants=network-online.target wg-quick@wg-porthub.service
+
+[Service]
+Type=notify
+NotifyAccess=main
+User=root
+Group=porthub
+# -tunnel-cidrs bounds WireGuard peer allowed-ips to the PortHub tunnel plus the
+# LAN ranges Core fronts, so a compromised Core cannot set a peer to 0.0.0.0/0
+# and hijack traffic. Keep this in sync with Core's -tunnel-cidrs and -lan-cidrs.
+ExecStart=/opt/porthub/bin/porthub-netd -socket /run/porthub/edge-netd.sock -allowed-dir /var/lib/porthub/edge/netd -allowed-table porthub -wireguard-interface wg-porthub -tunnel-cidrs 10.255.0.0/24,192.0.2.0/24 -allow-runtime-inspection
+Restart=always
+RestartSec=3
+TimeoutStartSec=10
+RuntimeDirectory=porthub
+RuntimeDirectoryMode=0750
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_UNIX AF_NETLINK
+RestrictNamespaces=true
+LockPersonality=true
+RestrictSUIDSGID=true
+SystemCallArchitectures=native
+CapabilityBoundingSet=CAP_NET_ADMIN
+AmbientCapabilities=CAP_NET_ADMIN
+ReadWritePaths=/run/porthub
+ReadOnlyPaths=/var/lib/porthub/edge/netd
+
+[Install]
+WantedBy=multi-user.target

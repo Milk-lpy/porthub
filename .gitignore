@@ -1,0 +1,35 @@
+bin/
+dist/
+node_modules/
+*.db
+*.sqlite
+*.key
+*.pem
+*.crt
+*.csr
+*.secret
+.env
+*.log
+*.raw
+*.bak
+/backups/
+private-backups/
+coverage/
+playwright-report/
+test-results/
+.DS_Store
+# Compiled Go binaries that escape the bin/ directory
+/apps/*/core
+/apps/*/agent
+/apps/*/edge
+/apps/*/netd
+/apps/*/relay
+/apps/*/porthub-*
+# Binaries built at the repository root (make build output)
+/core
+/relay
+/agent
+/edge
+/netd
+/update-helper
+*.exe

@@ -1,0 +1,27 @@
+[Unit]
+Description=PortHub Core
+After=network-online.target porthub-netd.service wg-quick@wg-porthub.service
+Wants=network-online.target porthub-netd.service wg-quick@wg-porthub.service
+[Service]
+User=porthub
+Group=porthub
+ExecStart=/opt/porthub/bin/porthub-core -listen :9443 -data /var/lib/porthub/core -frontend-dir /opt/porthub/frontend/current -traffic-retention-days 30 -backup-dir /var/backups/porthub -backup-retention 14 -backup-hour-utc 3 -edge-public-ipv4 203.0.113.10 -lan-interface auto -lan-cidrs 192.0.2.0/24 -tunnel-cidrs 10.255.0.0/24 -netd-socket /run/porthub/netd.sock
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
+RestrictNamespaces=true
+LockPersonality=true
+RestrictSUIDSGID=true
+SystemCallArchitectures=native
+ReadWritePaths=/var/lib/porthub /var/log/porthub /etc/porthub /var/backups/porthub
+UMask=0027
+[Install]
+WantedBy=multi-user.target

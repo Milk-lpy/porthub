@@ -1,0 +1,89 @@
+# API
+
+- POST /api/login: username, password, TOTP and optional `RememberDevice`; returns secure session cookie. A remembered trusted-device cookie can satisfy the TOTP step for the same browser until expiry.
+- POST /api/logout: authenticated logout.
+- POST /api/password/change: authenticated password change with old password and TOTP.
+- GET /api/status: authenticated status.
+- GET /api/edge/status: Core fetches Edge status over mTLS.
+- GET /api/edge/metrics: Core fetches Edge nft counter metrics over mTLS.
+- POST /api/traffic/snapshot: collect and store one Edge traffic metrics sample in Core.
+- GET /api/traffic/recent: read recent traffic samples from Core SQLite history.
+- GET /api/traffic/rules: read recent per-protocol/per-port Edge counter samples from Core SQLite history.
+- GET /api/traffic/rank: read the latest per-port traffic ranking from the newest sample.
+- GET /api/traffic/trend: read a historical series for a selected protocol and public port.
+- GET /api/traffic/public-sources: read persisted public source IP audit records and top-source summary. Filters support `source_ip`, `mapping_id`, `protocol`, `from`, `to` and bounded `limit`. Operator/admin roles receive exact source IPs; readonly roles receive masks.
+- GET /api/mappings: authenticated mapping list.
+- POST /api/mappings: authenticated mapping create.
+- PUT /api/mappings: authenticated mapping update, including enable/disable.
+- DELETE /api/mappings?id=: authenticated mapping delete.
+- POST /api/mappings/bulk: authenticated batch enable, disable or delete. The enable path validates the resulting active mapping set before writing.
+- GET /api/mappings/export: export current mapping inventory as JSON.
+- POST /api/mappings/import: append-import 1-200 mappings from JSON after normalizing ranges and validating conflicts.
+- Mapping objects may include `acl_ids` to bind enabled ACL rules to a specific public mapping. Bound deny rules drop only that mapping's public ports; bound allow rules compile into source allow sets and drop non-matching sources before DNAT.
+- GET /api/mappings/conflicts: validate active mapping conflicts.
+- GET /api/snapshot: authenticated signed snapshot export from Core.
+- GET /api/nft/preview: preview the nftables rules generated from current mappings.
+- POST /api/deploy: generate a signed snapshot and apply it to Edge over mTLS.
+- GET /api/mappings/conflicts: validate PortHub mapping uniqueness and compare enabled public protocol/ports with live Edge kernel listeners.
+- GET /api/session: restore an authenticated browser session, role and CSRF token after page reload.
+- GET /api/snapshots: list immutable signed deployment history and application results.
+- POST /api/snapshots/rollback: re-sign and apply a historical snapshot as a new version, then restore mappings, ACL rules, IP sets and HTTP proxy database state.
+- GET /api/audit: authenticated operation audit timeline. Keeps the legacy `ts`, `actor`, `action` and `detail` fields and adds `id`, `action_label`, `category`, `category_label`, `severity`, `severity_label`, `result`, `result_label`, `target`, `summary` and `system`. Optional filters are `q`, `actor`, exact `action`, `category`, `severity`, `result`, `from`, `to` (RFC3339 or `YYYY-MM-DD`) and bounded `limit` (1-500). The endpoint returns newest records first; it never returns passwords, TOTP secrets, tokens or private keys.
+- GET/POST/PUT/DELETE /api/resources: internal resources.
+- GET/POST/PUT/DELETE /api/services: service catalog.
+- GET/POST/PUT/DELETE /api/groups: mapping groups.
+- GET/POST/PUT/DELETE /api/acls: ACL definitions.
+- GET/POST/PUT/DELETE /api/acl-rules: global ACL rules compiled into signed snapshots. Current production implementation enforces deny CIDRs before PortHub DNAT rules.
+- GET/POST/PUT/DELETE /api/ip-sets: custom, GeoIP-derived or ASN-derived CIDR sets. Enabled deny sets are included in signed snapshots and compiled into PortHub-owned nft sets on Edge.
+- POST /api/ip-sets/import: import bounded CIDR text into a custom, GeoIP or ASN IP set. The parser supports comments, commas, whitespace, single IP normalization, deduplication and a 5,000-CIDR limit.
+- GET/POST/PUT/DELETE /api/templates: publish templates.
+- GET /api/templates/builtin: built-in game, NAS and high-risk remote-admin templates.
+- POST /api/templates/apply: create mappings from a template. High-risk templates are saved disabled unless explicitly allowed.
+- GET/POST/PUT/DELETE /api/http-proxies: HTTP Host/Path reverse proxy routes included in signed snapshots and served by Edge on 18090/tcp and 18443/tcp in the current deployment.
+- GET/POST/PUT/DELETE /api/domains: managed domain inventory. PortHub owns the management state.
+- GET/POST/PUT/DELETE /api/ddns/providers: DDNS provider inventory for Cloudflare, Aliyun, Tencent, webhook and external records. Sensitive config keys are redacted on write and read.
+- GET/POST/PUT/DELETE /api/ddns/records: DDNS record inventory with A/AAAA, source selection, TTL and sync state.
+- POST /api/ddns/sync: generate or execute a DDNS sync plan. `dry_run=true` is the safe default for UI usage. Supported providers can be executed when explicitly called with `dry_run=false` and protected `secret_ref` credentials.
+- GET/POST/PUT/DELETE /api/certificates: TLS certificate metadata and key references. Private keys are never returned by the API.
+- POST /api/certificates/plan: generate a certificate issuance or renewal plan. This validates mode, wildcard compatibility, renewal window and key_ref path without contacting an ACME CA.
+- POST /api/certificates/acme/prepare: dry-run or prepare protected local HTTP-01 key material. This endpoint is diagnostic; issuance uses the endpoint below.
+- GET /api/certificates/acme/status: return the configured CA directory and whether a valid account email is available. It never returns account or certificate private keys.
+- POST /api/certificates/acme/issue: issue HTTP-01 or DNS-01 certificates. HTTP-01 sends signed exact challenges to Edge over mTLS and verifies the public path. DNS-01 uses the certificate's enabled Cloudflare or webhook Provider to create a short-lived TXT record, waits for it to be visible, and cleans it on every exit path. Both modes validate/store the returned chain and can hot-deploy it to Edge. The request must explicitly accept the CA terms.
+- POST /api/certificates/import: validate a PEM chain and matching private key, store them with protected permissions, and optionally hot-deploy them.
+- POST /api/certificates/deploy: retry hot-deploying an already issued certificate without reissuing it.
+- GET/POST/PUT/DELETE /api/ip-feeds: manage bounded HTTPS CIDR feeds used to refresh GeoIP/ASN IP sets. Private/reserved destinations, unsafe redirects, oversize files and optional SHA-256 mismatches fail closed.
+- POST /api/ip-feeds/sync: dry-run or synchronize one feed into its managed IP set.
+- POST /api/ai/draft: parse a local natural-language publishing request into disabled mapping drafts, blockers and warnings. No external AI service is contacted and raw intent is not written to audit details.
+- GET /api/updates/status: report trusted update-source and staged-version state.
+- POST /api/updates/check: download and verify an Ed25519-signed update manifest from the configured public HTTPS source.
+- POST /api/updates/stage: download the matching Core or Agent artifact, verify manifest signature, size and SHA-256, then atomically stage it. It does not replace binaries or restart services.
+- GET /api/managed-services: read running state, boot-enabled state, PID and verified listeners for the fixed DST/QX units, plus a redacted `wg-dst` summary containing only interface address, listen port, peer count, latest handshake and byte counters.
+- POST /api/managed-services: admin-only lifecycle action for the six compiled service names. `prefer-real-ipv6-gateway` intentionally rejects `stop`; Core and netd reject all unlisted names and actions, and successful changes are audited. `/api/qx/services` remains a deprecated compatibility alias for existing clients.
+- GET /api/lan-scan: read the latest bounded LAN scan, including progress, discovered hosts, classified TCP ports and risk labels. The latest five completed scans are retained on Core.
+- POST /api/lan-scan: start `common` scanning across configured LAN CIDRs or `deep` scanning for one configured-LAN IP. The request is bounded to 200,000 TCP probes, rejects concurrent scans and never accepts arbitrary CIDRs. Results are candidates until explicitly imported as a resource, service or disabled forwarding draft.
+- `/opt/porthub/bin/porthub-update-helper`: root maintenance helper, not an HTTP endpoint. Default mode is dry-run; `--execute` re-verifies the signed stage, backs up the installed component, atomically replaces it, restarts only that component and restores the backup if health fails.
+- GET /api/backups: list Core backup archives under `/var/backups/porthub`.
+- POST /api/backups: create a 0600 Core backup archive containing PortHub Core database and PortHub-owned Core key/certificate files.
+- POST /api/backups/restore/plan: validate a selected backup archive name and return manual restore steps. It does not overwrite the running database.
+- GET/POST/PUT/DELETE /api/webhooks: webhook definitions. Enabled definitions with events `snapshot.applied`, `snapshot.failed`, `mapping.changed`, `certificate.changed` or `ddns.changed` are dispatched from Core audit events as bounded HTTP POST/PUT JSON requests.
+- GET/POST /api/tokens: API token inventory and one-time token creation.
+- DELETE /api/tokens?id=: revoke an API token by setting `revoked=1`.
+- API tokens can authenticate API requests with `Authorization: Bearer ph_...`. Token hashes are stored in SQLite, revoked tokens are rejected, and endpoint-specific RBAC is applied to both tokens and browser sessions.
+- GET/POST/PUT/DELETE /api/users: user inventory and role management. Lists never return password hashes or TOTP secrets; create returns initial credentials once.
+- POST /api/users/reset-password: generate or set a temporary password and force first-login password change.
+- POST /api/users/reset-totp: rotate a user's TOTP secret and return the new secret once.
+- GET /api/nodes/status: Core node status view backed by the local Agent.
+- GET /api/nodes/discovery: Core local Agent listener discovery proxied through the Core API.
+- Linux discovery also reports platform hints for Linux, PVE and FNOS plus bounded Docker container metadata through the read-only Docker socket API when available. Container environment variables and labels are not collected.
+- POST /api/agents/enrollments: admin-only creation of a one-time Agent enrollment credential with a 5-1440 minute lifetime.
+- POST /api/agents/register: exchange a valid one-time credential and Agent-generated ECDSA CSR for a PortHub Agent client certificate.
+- POST /api/agents/heartbeat: mTLS-only node status and discovery heartbeat. Certificate CN must match `node_id`.
+- GET /api/agent/status: Linux and Windows Agent read-only node status. Windows includes memory, system drive and interface byte counters.
+- GET /api/agent/discovery: Linux `/proc/net` listener discovery and Windows IP Helper TCP/UDP listener discovery.
+- GET /api/agent/tasks/allowlist: Agent controlled task allowlist.
+- POST /api/agent/tasks/validate: verifies Ed25519-signed, timestamped and nonced controlled-task envelopes without executing arbitrary shell commands.
+- POST /api/apply: Edge mTLS endpoint for signed snapshot apply.
+- GET /api/metrics: Edge mTLS endpoint exposing lightweight nft counter metrics.
+- GET /api/port-usage: Edge mTLS endpoint exposing deduplicated TCP listeners and UDP bound ports parsed from `/proc/net`.
+- POST /api/rollback: Edge mTLS endpoint for previous snapshot rollback.
+- POST /api/acme/challenges/apply: Edge mTLS endpoint for signed, timestamped, nonced HTTP-01 challenge sets. Only exact Host and token matches are served.

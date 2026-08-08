@@ -1,0 +1,47 @@
+# Security Design
+
+The first deploy uses independent `wg-porthub`, TLS on management APIs, Edge-side client certificate verification, Ed25519 snapshot signatures, timestamp and nonce replay checks, Argon2id password hashes, TOTP verification, HTTP-only secure session cookies, trusted-device cookies, and append-only audit rows. The audit API derives human-readable action/category/risk/result context at read time and keeps the raw detail available only as an authenticated detail view. PortHub never displays WireGuard private keys or TOTP secrets in routine list views.
+
+Public source auditing is collected from Edge's restricted conntrack summary, not packet payloads. Core writes only public Internet source addresses into minute-bucketed `public_source_audits` rows and excludes RFC1918/ULA, loopback, link-local, multicast, unspecified and CGNAT addresses. The existing traffic retention period also deletes source audit rows. Operator/admin roles can inspect exact source addresses for incident response; readonly roles receive an IPv4 /16-style or IPv6 /64-style mask. Live metrics and historical raw JSON use the same readonly redaction boundary.
+
+Trusted-device login stores only a SHA-256 hash of a random browser token in Core SQLite. The browser cookie is `HttpOnly`, `Secure`, `SameSite=Strict`, scoped to `/`, and expires after 30 days. A trusted device can satisfy the TOTP step only after the password is verified. Password changes, password resets and TOTP resets revoke existing trusted devices for that user.
+
+API tokens are stored as SHA-256 hashes with only a short prefix shown after creation. Bearer token requests do not use cookies or CSRF; revoked tokens are rejected and `last_used_at` is updated on use. RBAC is enforced for both sessions and tokens: readonly can view, operator can change mappings/resources/proxies and deploy, admin can manage security/DDNS/certificates/backups/integrations, and super_admin exclusively manages users and roles.
+
+Failed logins are limited per normalized username and source address. Five failures in five minutes trigger a 15-minute block with HTTP 429 and `Retry-After`. The in-memory limiter is bounded by time-based cleanup and successful login clears the relevant entry. `/api/session` restores the role and CSRF token from an existing secure browser session after a page reload.
+
+Core privilege separation uses the non-root `porthub-core` process plus the root `porthub-netd` helper. The helper has bounded `CAP_NET_ADMIN` and `CAP_CHOWN`; `CAP_CHOWN` is needed only to hand `/var/lib/porthub/relay/config.json` to the unprivileged relay and remains confined by `ProtectSystem=strict` plus PortHub-only `ReadWritePaths`. It uses a group-restricted Unix socket, cannot read arbitrary Core files, and only applies the PortHub-owned `porthub_core` nftables table. Candidate validation parses top-level structure and rejects every operation except flushing/destroying and declaring the configured owned table, including attempts that append a command for another table after a valid declaration.
+
+Edge uses the same separation boundary. `porthub-edge` runs as user/group `porthub`, has no Linux capabilities and cannot execute `nft`, `wg` or `conntrack`. Edge netd runs with only `CAP_NET_ADMIN`, listens on a `0660 root:porthub` Unix socket and is fixed to `table inet porthub` plus interface `wg-porthub`. It accepts only owned candidate paths, allowlisted WireGuard status fields, validated peer public keys/CIDRs/keepalive values, and fixed read-only nft/conntrack operations. The helper has no arbitrary shell or executable argument. Command output is streamed through a 2 MiB bounded buffer under a three-second context, preventing large conntrack state from causing unbounded helper memory use. Candidate files are atomically replaced as `0640 porthub:porthub`, so no DAC-bypass capability is required.
+
+Agent enrollment uses a dedicated Core Agent CA. Enrollment credentials are random, hashed in SQLite, expire after 5-1440 minutes and are atomically marked used. Agents generate their ECDSA private key locally and submit only a signed CSR. Heartbeats require a CA-verified client certificate whose `porthub-agent:<node_id>` CN matches the payload. The Agent CA private key is stored as `0600` and is never returned by an API.
+
+Controlled Agent task envelopes include ID, allowlisted task name, bounded arguments, timeout, issue time and nonce. The Agent verifies a configured Core Ed25519 public key against canonical JSON. Task execution remains disabled; arbitrary shell strings are not accepted.
+
+ACL enforcement currently supports global deny CIDRs compiled into `table inet porthub` before DNAT. This blocks selected sources only for PortHub-managed published ports and does not modify other firewall tables.
+
+DDNS provider records redact common secret keys (`token`, `secret`, `access_key`, `access_secret`, `api_key`, `password`) before storage and response. Tencent SecretId and SecretKey are stored together in the protected `secret_ref` credential bundle while the database keeps only a redacted identifier. The production path for real credentials is `secret_ref`, which points to protected files outside the database. Certificate APIs store metadata and key references only; certificate private keys are not returned to the UI.
+
+DDNS sync is explicit and audited. The Vue UI only exposes dry-run preview. Live webhook, Cloudflare, Aliyun and Tencent DNSPod sync require `dry_run=false`, validate A/AAAA IP family, use a 10 second timeout, and read bearer credentials only from `/etc/porthub/secrets` or `/var/lib/porthub/core/secrets`. Secrets are not included in responses or audit details.
+
+Webhook dispatch is event-bound HTTP delivery only. It accepts POST or PUT to http/https URLs, caps timeout at 30 seconds, caps retries at 5, blocks overriding `Authorization`, `Cookie` and `X-PortHub-*` headers from stored JSON, and signs payloads with `X-PortHub-Signature: sha256=...` when `secret_ref` is configured. It does not execute shell commands or include secret material in webhook payloads.
+
+Certificate planning validates wildcard compatibility (`*.example.com` requires DNS-01), renewal windows, and key references restricted to PortHub-owned certificate directories. Both ACME modes use ECDSA P-256 account and certificate keys with `0600` permissions. HTTP-01 sends an Ed25519-signed challenge set to Edge over mTLS and performs a public-path preflight. DNS-01 accepts only an enabled Cloudflare or webhook Provider, reads credentials through protected `secret_ref`, creates a short-lived TXT record, waits for an exact value and runs cleanup on every exit path. Public webhook URLs use the CIDR-feed SSRF-safe client; HTTP is accepted only for localhost testing. Core validates the returned chain/key and never returns private material to the UI. A failed Edge hot-deploy leaves a successfully issued certificate in `issued` state so it can be retried safely.
+
+GeoIP/ASN policy is represented as precompiled CIDR sets on Core. Edge does not load GeoIP databases or perform runtime ASN lookups; it only applies signed nft sets inside `table inet porthub` before PortHub DNAT rules.
+
+GeoIP/ASN import accepts bounded CIDR text and normalizes it on Core before storage. Single IPv4/IPv6 addresses are converted to `/32` or `/128`; invalid tokens abort the import; duplicate ranges are removed. This avoids runtime lookups and keeps Edge apply work limited to signed nft sets.
+
+Automatic CIDR feeds accept only public HTTPS destinations, resolve and reject private/reserved addresses before connection, cap redirects, response size and CIDR count, and optionally pin the downloaded SHA-256. Feed synchronization writes only normalized CIDRs to Core; Edge still receives only signed nft sets.
+
+The local AI assistant is a deterministic intent parser, not an executor. It produces disabled mapping drafts plus warnings and blockers, never contacts an external model, never applies a snapshot, and never records raw user intent in audit details.
+
+Update delivery is two-stage. Core accepts only an Ed25519-signed manifest from a configured public HTTPS origin and verifies artifact platform, size and SHA-256 before atomic staging. The unprivileged Web process cannot replace running binaries or restart services. The separate root maintenance helper re-verifies the staged manifest and artifact, permits only Core or Agent targets, creates a timestamped backup, atomically replaces the binary, restarts only the selected service and restores the prior binary if the 30-second health check fails.
+
+## Mapping ACL Binding
+
+Mappings can bind `acl_ids` to enabled ACL rules. Deny rules are compiled only for the bound mapping's public protocol and port range. Allow rules are compiled into PortHub-owned nft sets and enforced as default-deny for that mapping before DNAT. This keeps ACL behavior scoped to PortHub's own `table inet porthub` and avoids changing global firewall policy.
+
+## Mapping Resource Controls
+
+The mapping model persists description, tags, resource/group/Edge/target-node references, listen IPv4, log level, compatibility source mode, byte-rate limit, TCP connection limit and creator timestamps. Bounds are validated before signing. Edge listener checks are read-only and derive from `/proc/net`; deployment fails closed when a configured public protocol/port conflicts with a bound process.

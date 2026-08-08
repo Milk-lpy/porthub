@@ -1,0 +1,25 @@
+[Unit]
+Description=PortHub Agent
+After=network-online.target
+[Service]
+User=porthub
+Group=porthub
+ExecStart=/opt/porthub/bin/porthub-agent -config /etc/porthub/agent.json -listen 127.0.0.1:9731
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+LockPersonality=true
+RestrictSUIDSGID=true
+SystemCallArchitectures=native
+ReadWritePaths=/var/lib/porthub /var/log/porthub
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,29 @@
+[Unit]
+Description=PortHub Edge
+After=network-online.target porthub-netd.service wg-quick@wg-porthub.service
+Wants=network-online.target porthub-netd.service wg-quick@wg-porthub.service
+[Service]
+User=porthub
+Group=porthub
+ExecStart=/opt/porthub/bin/porthub-edge -listen :9443 -data /var/lib/porthub/edge -core-pub /etc/porthub/core-ed25519.pub -netd-socket /run/porthub/edge-netd.sock
+Restart=always
+RestartSec=3
+UMask=0027
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+LockPersonality=true
+RestrictSUIDSGID=true
+SystemCallArchitectures=native
+ReadWritePaths=/var/lib/porthub/edge /var/log/porthub
+CapabilityBoundingSet=
+AmbientCapabilities=
+[Install]
+WantedBy=multi-user.target

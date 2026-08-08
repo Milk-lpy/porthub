@@ -1,0 +1,18 @@
+{
+  "node_id": "linux-node-01",
+  "core_url": "https://core.example.test:9443",
+  "listen": "127.0.0.1:9731",
+  "server_ca_file": "/etc/porthub/agent/core-ca.crt",
+  "certificate_file": "/var/lib/porthub/agent/agent.crt",
+  "private_key_file": "/var/lib/porthub/agent/agent.key",
+  "enrollment_token_file": "/etc/porthub/agent/enrollment.token",
+  "heartbeat_seconds": 30,
+  "task_public_key": "REPLACE_WITH_CORE_ED25519_PUBLIC_KEY_BASE64",
+  "task_allowlist": [
+    "wireguard_status",
+    "service_probe",
+    "tcp_probe",
+    "http_probe",
+    "docker_list"
+  ]
+}
