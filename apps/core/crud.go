@@ -25,6 +25,7 @@ type genericItem struct {
 
 func registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/health", health)
+	mux.HandleFunc("/api/integrations/airsim", requireAuth(airsimIntegrationStatus))
 	mux.HandleFunc("/api/ready", readiness)
 	mux.HandleFunc("/api/openapi.yaml", openAPI)
 	mux.HandleFunc("/api/login", login)
