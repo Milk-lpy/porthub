@@ -92,6 +92,12 @@ const help: Record<string, PageHelp> = {
     terms: [{ term: 'Peer', meaning: '连接到 WireGuard 隧道的另一端设备。' }, { term: '握手', meaning: 'WireGuard 两端最近一次成功确认加密连接的时间。' }, { term: 'SOCKS5', meaning: 'QX 通过它把网络请求交给局域网代理服务器。' }, { term: '配置分发', meaning: '通过局域网 HTTP 地址向设备提供 QX 配置文件。' }, { term: '开机自启', meaning: '服务器重启后，系统会自动启动该服务。' }, { term: 'PID', meaning: '当前服务进程的编号；一次性系统策略可能没有持续 PID。' }],
     caution: '重启或停止 DST 隧道会短暂中断相关游戏连接；停止 SOCKS5 会中断正在使用它的设备。',
   },
+  '/airsim': {
+    title: 'AirSIM 通信网关', summary: '把自托管 AirSIM Relay 纳入 PortHub 的健康检查和公网反向代理草稿。',
+    steps: ['先在本地 Linux 主机独立安装 AirSIM Relay，并确认 /healthz 返回 200。', '让 PortHub Edge 经已有 WireGuard 访问本地专属转发入口。', '创建默认禁用的 HTTPS/WSS 代理草稿，检查证书与权限后手工下发。', '在安卓和 iPhone 上完成短信、双向音频与锁屏推送真机验收。'],
+    terms: [{ term: 'Relay', meaning: 'AirSIM 独立的通信信令、设备状态及可选音频中继。' }, { term: 'APNs', meaning: '苹果通知服务；锁屏 VoIP 来电需要匹配的服务端认证。' }, { term: 'WSS', meaning: '通过 TLS 加密的 WebSocket 双向数据连接。' }],
+    caution: '请勿把 APNs 私钥、短信、通话音频或鉴权令牌写入 PortHub 数据库或公开仓库。HTTP 健康检查并不能证明锁屏来电可用。',
+  },
   '/tokens': {
     title: 'API Token', summary: '为自动化程序创建可撤销、权限受限的访问凭据。',
     steps: ['按自动化任务选择最低够用的角色。', '创建后立即保存一次性显示的完整 Token。', '定期查看最后使用时间并撤销闲置凭据。'],
