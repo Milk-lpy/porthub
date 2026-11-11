@@ -64,6 +64,10 @@ Core 部署在局域网或受保护的管理节点，负责：
 - 执行受签名、带时间戳、带 nonce 且在白名单内的任务校验；
 - 默认不提供任意 Shell 执行接口，不上传环境变量、数据包内容或业务日志。
 
+## AirSIM 通信网关集成
+
+PortHub 可选集成第三方 AirSIM 的本地 ECS Relay：Core 提供只读健康检查，管理面板创建默认禁用的 HTTPS/WSS Host 代理草稿，Edge 经现有 WireGuard 转发到本地独立 Relay。该功能不会安装上游 AirSIM、接触短信/通话媒体或保存 Apple APNs 密钥。完整隔离部署、备份、验收及回滚见 [AirSIM × PortHub 指南](docs/airsim-porthub.md)。AirSIM 许可证限制为非商业用途。
+
 ## 二、主要功能
 
 | 模块 | 能力 |

@@ -8,6 +8,7 @@ import AppSidebar from './components/AppSidebar.vue'
 // 页面级懒加载: 每个 Panel 独立 chunk, 按路由按需加载, 缩小首屏主包
 const AssistantPanel = defineAsyncComponent(() => import('./components/AssistantPanel.vue'))
 const AuditPanel = defineAsyncComponent(() => import('./components/AuditPanel.vue'))
+const AirSIMPanel = defineAsyncComponent(() => import('./components/AirSIMPanel.vue'))
 const BackupsPanel = defineAsyncComponent(() => import('./components/BackupsPanel.vue'))
 const CertificatesPanel = defineAsyncComponent(() => import('./components/CertificatesPanel.vue'))
 const DashboardPanel = defineAsyncComponent(() => import('./components/DashboardPanel.vue'))
@@ -255,6 +256,7 @@ onBeforeUnmount(() => ops.stopLiveMonitoring())
           <TrafficPanel v-else-if="route.path === '/traffic'" @collect="collectTraffic" @notify="showNotice" />
 
           <ManagedServicesPanel v-else-if="route.path === '/qx-services'" @notify="showNotice" />
+          <AirSIMPanel v-else-if="route.path === '/airsim'" @notify="showNotice" />
           <TokensPanel v-else-if="route.path === '/tokens'" @notify="showNotice" />
           <WebhooksPanel v-else-if="route.path === '/webhooks'" @notify="showNotice" />
           <UsersPanel v-else-if="route.path === '/users'" @notify="showNotice" />
