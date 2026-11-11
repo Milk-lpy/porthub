@@ -6,7 +6,7 @@ Requires=porthub-airsim-bridge.socket
 After=porthub-airsim-bridge.socket
 
 [Service]
-Type=notify
+Type=simple
 ExecStart=/usr/lib/systemd/systemd-socket-proxyd 127.0.0.1:8787
 NoNewPrivileges=true
 ProtectSystem=strict
