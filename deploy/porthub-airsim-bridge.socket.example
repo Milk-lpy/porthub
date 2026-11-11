@@ -1,0 +1,15 @@
+# TEMPLATE ONLY — replace the example VPN IP/port after auditing the host.
+# Do not install/enable this file as-is. Must remain reachable ONLY from VPS Edge over VPN.
+[Unit]
+Description=Private VPN entry for AirSIM ECS Relay
+After=network-online.target
+Wants=network-online.target
+
+[Socket]
+ListenStream=10.255.0.2:18787
+Accept=no
+FreeBind=yes
+NoDelay=true
+
+[Install]
+WantedBy=sockets.target
