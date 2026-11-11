@@ -87,7 +87,7 @@ curl --fail --max-time 4 http://10.255.0.2:18787/healthz
 升级后的面板包含「系统 → AirSIM 通信」：
 
 1. **检测 Relay**：Core 后端只读请求 `GET /api/integrations/airsim`，默认只检查 `http://127.0.0.1:8787/healthz`。Relay 若与 Core 不在同一主机，可在 PortHub Core systemd 环境中设置：
-   `AIRSIM_RELAY_HEALTH_URL=http://<受信任私网IP>:<端口>/healthz`。只接受私网 IP/localhost，不跟随重定向，不会访问 APNs 密钥。
+   `AIRSIM_RELAY_HEALTH_URL=http://<受信任私网IP>:<端口>/healthz`。只接受私网 IP、Tailscale 100.64.0.0/10 或 localhost，不跟随重定向，不会访问 APNs 密钥。
 2. **创建代理草稿**：输入拟使用的 **专用子域名** 和 `http://<Core VPN IP>:18787`；程序生成 **默认禁用** 的 PortHub HTTP 代理记录，并启用 WebSocket、保留 Host、根路径与 `/healthz` 检查。此步骤不会自动下发。
 3. 检查专用子域名的 DNS、HTTPS 证书、443 入口以及已有反代/端口占用。PortHub Edge 示例默认 HTTPS 监听 **18443**，若外部需要标准 443，必须经实际已配置的公网 HTTPS 入口转接，不能假设 443 已被 PortHub 接管。
 4. 查看配置快照差异和路由冲突，人工启用代理并签名下发。回滚时只撤销这条 AirSIM Host 代理及专用 socket，无须停机/删改已有 wg-porthub、Lucky、QX 规则。
