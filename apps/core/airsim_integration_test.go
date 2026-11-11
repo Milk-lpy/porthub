@@ -13,6 +13,7 @@ func TestValidateAirSIMHealthURL(t *testing.T) {
 		"http://127.0.0.1:8787/healthz",
 		"http://10.66.0.2:18787/healthz",
 		"http://192.168.1.12:18787/healthz",
+		"http://100.101.102.103:18787/healthz",
 		"http://localhost:8787/healthz",
 	} {
 		if _, err := validateAirSIMHealthURL(value); err != nil {
