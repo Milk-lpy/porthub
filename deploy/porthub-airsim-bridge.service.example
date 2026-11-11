@@ -1,0 +1,15 @@
+# TEMPLATE ONLY — inspect the actual socket-proxyd executable path first.
+# This unit does not run AirSIM itself; it forwards a private TCP socket to 127.0.0.1:8787.
+[Unit]
+Description=Private AirSIM Relay TCP bridge
+Requires=porthub-airsim-bridge.socket
+After=porthub-airsim-bridge.socket
+
+[Service]
+Type=notify
+ExecStart=/usr/lib/systemd/systemd-socket-proxyd 127.0.0.1:8787
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
