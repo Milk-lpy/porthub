@@ -13,6 +13,7 @@ import {
   LayoutDashboard,
   LockKeyhole,
   Network,
+  PhoneCall,
   RadioTower,
   Router,
   Route,
@@ -78,6 +79,7 @@ export const navGroups: NavGroup[] = [
     label: '系统',
     items: [
       { path: '/qx-services', label: '本机服务', shortLabel: '服务', icon: Router },
+      { path: '/airsim', label: 'AirSIM 通信', shortLabel: 'AirSIM', icon: PhoneCall },
       { path: '/assistant', label: '命令助手', shortLabel: '助手', icon: Bot },
       { path: '/tokens', label: 'API Token', shortLabel: 'Token', icon: KeyRound, minimumRole: 'admin' },
       { path: '/webhooks', label: 'Webhook', shortLabel: 'Webhook', icon: Webhook, minimumRole: 'admin' },
