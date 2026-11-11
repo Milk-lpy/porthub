@@ -34,10 +34,23 @@ func validateAirSIMHealthURL(raw string) (*url.URL, error) {
 	}
 	host := u.Hostname()
 	ip := net.ParseIP(host)
-	if host != "localhost" && (ip == nil || (!ip.IsLoopback() && !ip.IsPrivate())) {
+	if host != "localhost" && !airSIMTrustedIP(ip) {
 		return nil, errors.New("AirSIM health target must be a private IP or localhost")
 	}
 	return u, nil
+}
+
+func airSIMTrustedIP(ip net.IP) bool {
+	if ip == nil {
+		return false
+	}
+	if ip.IsLoopback() || ip.IsPrivate() {
+		return true
+	}
+	// Tailscale uses the shared-address space (100.64.0.0/10), which Go's
+	// IsPrivate does not include.
+	ip4 := ip.To4()
+	return ip4 != nil && ip4[0] == 100 && ip4[1] >= 64 && ip4[1] <= 127
 }
 
 func checkAirSIMHealth(ctx context.Context, raw string) bool {
